@@ -39,6 +39,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         self.monitor_thread = hub.spawn(self.monitor)
         self.flow_ask = True
         self.routes = [1,2,3]
+        self.flowid = 0
 
 
     def route1(self,dpid_id,in_port):
@@ -55,6 +56,8 @@ class SimpleSwitch13(app_manager.RyuApp):
             out_port = 1
         elif dpid_id == 5 and in_port == 1:
             out_port = 2
+        else:
+            print("Any of that !!!!!!!!!!!!!!!!!!!!!!!")
         return out_port
     
     def route2(self,dpid_id,in_port):
@@ -71,6 +74,8 @@ class SimpleSwitch13(app_manager.RyuApp):
             out_port = 1
         elif dpid_id == 5 and in_port == 1:
             out_port = 3
+        else:
+            print("Any of that !!!!!!!!!!!!!!!!!!!!!!!")
         return out_port
 
     def route3(self,dpid_id,in_port):
@@ -87,22 +92,27 @@ class SimpleSwitch13(app_manager.RyuApp):
             out_port = 1
         elif dpid_id == 5 and in_port == 1:
             out_port = 4
+        else:
+            print("Any of that !!!!!!!!!!!!!!!!!!!!!!!")
         return out_port
 
     def monitor(self):
         self.logger.info("start flow monitoring thread")
+        
         while True:
             hub.sleep(3)
+            print("Total flows: {}".format(len(self.datapaths.values())))
             for datapath in self.datapaths.values():
                 while self.flow_ask == False:
                     time.sleep(1)
                 ofp = datapath.ofproto
                 #print(dir(datapath))
                 ofp_parser = datapath.ofproto_parser
-                req = ofp_parser.OFPFlowStatsRequest(datapath)
+                req = ofp_parser.OFPFlowStatsRequest(datapath,1,ofp.OFPTT_ALL,ofp.OFPP_ANY, ofp.OFPG_ANY)
+                print(len(self.datapaths.values()))
                 datapath.send_msg(req)
                 self.flow_id = datapath.id
-                self.flow_ask = False
+                # self.flow_ask = False
                 # mod = ofp_parser.OFPFlowMod(datapath=datapath,table_id=ofp.OFPTT_ALL, command=datapath.ofproto.OFPFC_DELETE,out_port=ofp.OFPP_ANY, out_group=ofp.OFPG_ANY)
                 # datapath.send_msg(mod)
 
@@ -113,6 +123,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
         print("called")
+        #print("Datapath : {}".format(dir(datapath)))
 
         # install table-miss flow entry
         #
@@ -129,23 +140,30 @@ class SimpleSwitch13(app_manager.RyuApp):
 
     @set_ev_cls([ofp_event.EventOFPFlowStatsReply,], MAIN_DISPATCHER)
     def stats_reply_handler(self, ev):
-        #print(len(ev.msg.body))
         #print(dir(ev.msg.datapath[0]))
         for stat in ev.msg.body:
-            #self.logger.info("Flow details:  %s ",stat)
+            self.logger.info("Flow details:  %s ",stat)
+            self.logger.info("Match: {}".format(stat.match))
             print("Flow id: {}".format(self.flow_id))
             self.logger.info("byte_count:  %d ", stat.byte_count)
             # self.logger.info("packet_count:  %d ", stat.packet_count)
-            if stat.byte_count > 1500:
-                d = self.datapaths[self.flow_id]
-                ofp = d.ofproto
-                #print(dir(datapath))
-                ofp_parser = d.ofproto_parser
-                random_route = [ r for r in self.routes if r != self.current_route ]
-                self.current_route = random.choice(random_route)
-                mod = ofp_parser.OFPFlowMod(datapath=d,table_id=ofp.OFPTT_ALL, command=d.ofproto.OFPFC_DELETE,out_port=ofp.OFPP_ANY, out_group=ofp.OFPG_ANY)
-                d.send_msg(mod)
-                print("Flow id {} deleted".format(self.flow_id))
+            #if stat.byte_count > 1500:
+                  #przepisac matcha bez fizycnych portow
+                  #wybrac losowa sciezke inna niz obecna 
+                  #ide po switchach z tej sciezki od tylu
+                  # wpisuje przeplywy na matha
+                  # do matcha dodaje port weiscowy dla danego swiycha i akcja port wysciowy
+                  # wpis z nizszym priorytetem
+
+            #     d = self.datapaths[self.flow_id]
+            #     ofp = d.ofproto
+            #     #print(dir(datapath))
+            #     ofp_parser = d.ofproto_parser
+            #     random_route = [ r for r in self.routes if r != self.current_route ]
+            #     #self.current_route = random.choice(random_route)
+            #     mod = ofp_parser.OFPFlowMod(datapath=d,table_id=ofp.OFPTT_ALL, command=d.ofproto.OFPFC_DELETE,out_port=ofp.OFPP_ANY, out_group=ofp.OFPG_ANY)
+            #     d.send_msg(mod)
+            #     print("Flow id {} deleted".format(self.flow_id))
             self.flow_ask = True
             
 
@@ -202,9 +220,26 @@ class SimpleSwitch13(app_manager.RyuApp):
         ofproto = datapath.ofproto
         #self.logger.info(msg.data)
         pkt = packet.Packet(msg.data)
-        ipv4_d = ipv4.ipv4(msg.data)
-        #self.logger.info(pkt)
-        #self.logger.info("######################################")
+        ipv4_pkt = pkt.get_protocol(ipv4.ipv4)
+        layer4_header = None
+        try:
+            layer4_header = layer4_header = pkt.protocols[2]
+        except IndexError:
+            print("This is not layer 4 packet")
+        #ipv4_d = ipv4.ipv4(msg.data)
+        #print(ipv4_pkt)
+        #print(dir(layer4_header))
+        arp_pkt = pkt.get_protocol(arp.arp)
+        if arp_pkt is not None:
+            print("ARP packet DETECTED !!!!!!!!!!!!!!!!!")
+        else:
+            pass
+            # print("Ip Src: {}".format(ipv4_pkt.src))
+            # print("Ip Dest: {}".format(ipv4_pkt.dst))
+            # print("Protocol Name: {}".format(layer4_header.protocol_name))
+            # print("Src Port: {}".format(layer4_header.src_port))
+            # print("Dst Port: {}".format(layer4_header.dst_port))
+       
         # for i in pkt:
         #     #self.logger.info(i) 
         #     print(i)
@@ -223,7 +258,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         src = eth.src
 
         dpid = format(datapath.id, "d").zfill(16)
-        print("DPID: {}".format(dpid))
+        #print("DPID: {}".format(dpid))
         dpid_id = int(dpid)
         self.mac_to_port.setdefault(dpid, {})
 
@@ -250,7 +285,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         #print(out_port)
         #print(in_port)
         
-        print("Currrent ROUTE: {}".format(self.current_route))
+        #print("Currrent ROUTE: {}".format(self.current_route))
         try:
             out_port
         except NameError:
@@ -260,15 +295,56 @@ class SimpleSwitch13(app_manager.RyuApp):
 
         # install a flow to avoid packet_in next time
         
-        if out_port != ofproto.OFPP_FLOOD:
-            match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
+        if out_port != ofproto.OFPP_FLOOD and arp_pkt is None:
+            #match = parser.OFPMatch(in_port=in_port, eth_dst=dst, eth_src=src)
+            self.flowid = self.flowid + 1
+            if layer4_header.protocol_name == "arp":
+                    match = parser.OFPMatch(in_port=in_port,
+                        eth_dst=dst,
+                        eth_src=src,
+                        eth_type=0x0806
+                        )
+            if layer4_header.protocol_name == "icmp":
+                match = parser.OFPMatch(in_port=in_port,
+                        eth_dst=dst,
+                        eth_src=src,
+                        eth_type=0x0800,
+                        ipv4_src=ipv4_pkt.src,
+                        ipv4_dst=ipv4_pkt.dst,
+                        ip_proto=1
+                        )
+            if layer4_header.protocol_name == "tcp":
+                match = parser.OFPMatch(in_port=in_port,
+                                        eth_dst=dst,
+                                        eth_src=src,
+                                        eth_type=0x0800,
+                                        ipv4_src=ipv4_pkt.src,
+                                        ipv4_dst=ipv4_pkt.dst,
+                                        ip_proto=6,
+                                        tcp_src=layer4_header.src_port,
+                                        tcp_dst=layer4_header.dst_port)
+            
+            if layer4_header.protocol_name == "udp":
+                match = parser.OFPMatch(in_port=in_port,
+                                        eth_dst=dst,
+                                        eth_src=src,
+                                        eth_type=0x0800,
+                                        ipv4_src=ipv4_pkt.src,
+                                        ipv4_dst=ipv4_pkt.dst,
+                                        ip_proto=17,
+                                        udp_src=layer4_header.src_port,
+                                        udp_dst=layer4_header.dst_port)
+            #print("Match: {}".format(dir(match)))
+            
+
             # verify if we have a valid buffer_id, if yes avoid to send both
             # flow_mod & packet_out
             if msg.buffer_id != ofproto.OFP_NO_BUFFER:
-                self.add_flow(datapath, 1, match, actions, msg.buffer_id)
-                return
+                self.add_flow(datapath, 1000, match, actions, msg.buffer_id)
+                #self.datapaths[datapath.id] = (datapath,match)
             else:
-                self.add_flow(datapath, 1, match, actions)
+                self.add_flow(datapath, 1000, match, actions)
+                #self.datapaths[datapath.id] = (datapath,match)
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
             data = msg.data
