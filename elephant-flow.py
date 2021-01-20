@@ -25,6 +25,7 @@ from ryu.lib.packet import ethernet, packet, arp, ipv4, tcp, udp
 from ryu.lib import hub
 import time
 import random
+from copy import deepcopy
 
 
 
@@ -34,12 +35,17 @@ class SimpleSwitch13(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(SimpleSwitch13, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
-        self.current_route = 1
+        self.current_route = 2
         self.datapaths = {}
         self.monitor_thread = hub.spawn(self.monitor)
         self.flow_ask = True
         self.routes = [1,2,3]
         self.flowid = 0
+        self.h1ip = "10.0.0.1"
+        self.h2ip = "10.0.0.2"
+        self.current_priority = 200
+        self.allow = False
+
 
 
     def route1(self,dpid_id,in_port):
@@ -109,7 +115,7 @@ class SimpleSwitch13(app_manager.RyuApp):
                 #print(dir(datapath))
                 ofp_parser = datapath.ofproto_parser
                 req = ofp_parser.OFPFlowStatsRequest(datapath,1,ofp.OFPTT_ALL,ofp.OFPP_ANY, ofp.OFPG_ANY)
-                print(len(self.datapaths.values()))
+                #print(len(self.datapaths.values()))
                 datapath.send_msg(req)
                 self.flow_id = datapath.id
                 # self.flow_ask = False
@@ -136,17 +142,69 @@ class SimpleSwitch13(app_manager.RyuApp):
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
                                           ofproto.OFPCML_NO_BUFFER)]
         self.add_flow(datapath, 0, match, actions)
-        self.datapaths[datapath.id] = datapath
+        self.datapaths[int(datapath.id)] = datapath
 
     @set_ev_cls([ofp_event.EventOFPFlowStatsReply,], MAIN_DISPATCHER)
     def stats_reply_handler(self, ev):
-        #print(dir(ev.msg.datapath[0]))
+        datapath_id = ev.msg.datapath.id
+        
         for stat in ev.msg.body:
-            self.logger.info("Flow details:  %s ",stat)
-            self.logger.info("Match: {}".format(stat.match))
-            print("Flow id: {}".format(self.flow_id))
-            self.logger.info("byte_count:  %d ", stat.byte_count)
+            #self.logger.info("Flow details:  %s ",stat.match)
+            #self.logger.info("Match: {}".format(stat.match.fields))
+            #self.logger.info("Match: {}".format(stat.match['oxm_fields']))
+            #self.logger.info("byte_count: {} ".format(stat.match['ipv4_src']))
+            #if stat.byte_count > 1500:
+            match = deepcopy(stat.match)
+            #self.current_priority = self.current_priority - 5
+            ipv4_src = stat.match.get('ipv4_src')
+            ipv4_dst = stat.match.get('ipv4_dst')
+
+            #random_route = [ r for r in self.routes if r != self.current_route ]
+            #print(type(self.datapaths[5]))
+
+            if self.allow:
+                random_route = 1
+                #self.current_route = random_route
+                if ipv4_src == self.h1ip:
+                    if random_route == 1:
+                        match.set_in_port(2)
+                        actions = [self.datapaths[5].ofproto_parser.OFPActionOutput(1)]
+                        self.add_flow(self.datapaths[5], 20, match, actions)
+                        match = deepcopy(stat.match)
+                        match.set_in_port(1)
+                        actions = [self.datapaths[2].ofproto_parser.OFPActionOutput(2)]
+                        self.add_flow(self.datapaths[2], 20, match, actions)
+                        match = deepcopy(stat.match)
+                        match.set_in_port(1)
+                        actions = [self.datapaths[1].ofproto_parser.OFPActionOutput(2)]
+                        self.add_flow(self.datapaths[1], 20, match, actions)
+                        print("Flow added")
+                    elif random_route == 2:
+                        pass
+                    elif random_route == 3:
+                        pass
+                if ipv4_src == self.h2ip:
+                    if random_route == 1:
+                        match.set_in_port(2)
+                        actions = [self.datapaths[1].ofproto_parser.OFPActionOutput(1)]
+                        self.add_flow(self.datapaths[1], 20, match, actions)
+                        match = deepcopy(stat.match)
+                        match.set_in_port(2)
+                        actions = [self.datapaths[2].ofproto_parser.OFPActionOutput(1)]
+                        self.add_flow(self.datapaths[2], 20, match, actions)
+                        match = deepcopy(stat.match)
+                        match.set_in_port(1)
+                        actions = [self.datapaths[5].ofproto_parser.OFPActionOutput(2)]
+                        self.add_flow(self.datapaths[5], 20, match, actions)
+                        print("Flow added")
+                    elif random_route == 2:
+                        pass
+                    elif random_route == 3:
+                        pass
+            # for i in stat.match.stringify_attrs():
+            #     print(type(i))
             # self.logger.info("packet_count:  %d ", stat.packet_count)
+
             #if stat.byte_count > 1500:
                   #przepisac matcha bez fizycnych portow
                   #wybrac losowa sciezke inna niz obecna 
@@ -181,7 +239,7 @@ class SimpleSwitch13(app_manager.RyuApp):
             mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
                                     match=match, instructions=inst)
         datapath.send_msg(mod)
-    
+
     # @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     # def send_flow_mod(self, datapath):
         # ofp = datapath.ofproto
@@ -258,8 +316,9 @@ class SimpleSwitch13(app_manager.RyuApp):
         src = eth.src
 
         dpid = format(datapath.id, "d").zfill(16)
-        #print("DPID: {}".format(dpid))
+        
         dpid_id = int(dpid)
+        print("DPID: {}".format(dpid_id))
         self.mac_to_port.setdefault(dpid, {})
 
         #self.logger.info("packet in %s %s %s %s", dpid, src, dst, in_port)
@@ -290,6 +349,9 @@ class SimpleSwitch13(app_manager.RyuApp):
             out_port
         except NameError:
             out_port = ofproto.OFPP_FLOOD 
+        
+        print("IN PORT: {}".format(in_port))
+        print("OUT PORT: {}".format(out_port))
 
         actions = [parser.OFPActionOutput(out_port)]
 
@@ -352,3 +414,4 @@ class SimpleSwitch13(app_manager.RyuApp):
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                 in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
+        self.allow = True
