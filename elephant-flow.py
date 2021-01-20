@@ -45,6 +45,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         self.h2ip = "10.0.0.2"
         self.current_priority = 200
         self.allow = False
+        self.flow_added = False
 
 
 
@@ -107,7 +108,6 @@ class SimpleSwitch13(app_manager.RyuApp):
         
         while True:
             hub.sleep(3)
-            print("Total flows: {}".format(len(self.datapaths.values())))
             for datapath in self.datapaths.values():
                 while self.flow_ask == False:
                     time.sleep(1)
@@ -150,7 +150,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         
         for stat in ev.msg.body:
             #self.logger.info("Flow details:  %s ",stat.match)
-            #self.logger.info("Match: {}".format(stat.match.fields))
+            #self.logger.info("Match: {}".format(dir(stat.match._flow)))
             #self.logger.info("Match: {}".format(stat.match['oxm_fields']))
             #self.logger.info("byte_count: {} ".format(stat.match['ipv4_src']))
             #if stat.byte_count > 1500:
@@ -158,49 +158,126 @@ class SimpleSwitch13(app_manager.RyuApp):
             #self.current_priority = self.current_priority - 5
             ipv4_src = stat.match.get('ipv4_src')
             ipv4_dst = stat.match.get('ipv4_dst')
+            tcp_dst = stat.match.get('tcp_dst')
+            tcp_src = stat.match.get('tcp_src')
+            udp_dst = stat.match.get('udp_dst')
+            udp_src = stat.match.get('udp_src')
+            ip_proto = stat.match.get('ip_proto')
 
+            if tcp_dst:
+                src_port = tcp_src
+                dst_port = tcp_dst
+                ip_proto = 6
+                eth_type=0x0800
+                self.allow = True
+                print("TCP DETECTED !!!!!")
+            elif udp_dst:
+                src_port = udp_src
+                dst_port = udp_dst
+                ip_proto = 17
+                eth_type=0x0800
+                self.allow = True
+                print("UDP DETECTED !!!!!")
+            elif ip_proto == 1: 
+                ip_proto = 1
+                eth_type=0x0800
+                self.allow = True
+                src_port = None
+                dst_port = None
+                print("ICMP DETECTED !!!!!")
+            else:
+                ip_proto = None
+                self.allow = True
+                eth_type=0x0806
+                
             #random_route = [ r for r in self.routes if r != self.current_route ]
             #print(type(self.datapaths[5]))
 
-            if self.allow:
+            if self.allow and not self.flow_added:
                 random_route = 1
                 #self.current_route = random_route
                 if ipv4_src == self.h1ip:
                     if random_route == 1:
-                        match.set_in_port(2)
-                        actions = [self.datapaths[5].ofproto_parser.OFPActionOutput(1)]
-                        self.add_flow(self.datapaths[5], 20, match, actions)
-                        match = deepcopy(stat.match)
-                        match.set_in_port(1)
-                        actions = [self.datapaths[2].ofproto_parser.OFPActionOutput(2)]
-                        self.add_flow(self.datapaths[2], 20, match, actions)
-                        match = deepcopy(stat.match)
-                        match.set_in_port(1)
-                        actions = [self.datapaths[1].ofproto_parser.OFPActionOutput(2)]
-                        self.add_flow(self.datapaths[1], 20, match, actions)
-                        print("Flow added")
+                        if not ip_proto:
+                            pass
+                            # match = self.datapaths[5].ofproto_parser.OFPMatch(in_port=2,
+                            #                                                 eth_type=eth_type)
+                                                               
+
+                            # actions = [self.datapaths[5].ofproto_parser.OFPActionOutput(1)]
+                            # self.add_flow(self.datapaths[5], 20, match, actions)
+                            # match = self.datapaths[2].ofproto_parser.OFPMatch(in_port=1,
+                            #                                                 eth_type=eth_type)
+                                                                
+
+                            # actions = [self.datapaths[2].ofproto_parser.OFPActionOutput(2)]
+                            # self.add_flow(self.datapaths[2], 20, match, actions)
+                            # match = self.datapaths[1].ofproto_parser.OFPMatch(in_port=1,
+                            #                                                 eth_type=eth_type)
+                                                                   
+                            # actions = [self.datapaths[1].ofproto_parser.OFPActionOutput(2)]
+                            # self.add_flow(self.datapaths[1], 20, match, actions)
+                            # print("Flow added")
+                        else:
+                            match = self.datapaths[5].ofproto_parser.OFPMatch(in_port=2,
+                                                                            eth_type=eth_type,
+                                                                            ipv4_src=ipv4_src,
+                                                                            ipv4_dst=ipv4_dst,
+                                                                            ip_proto=ip_proto)
+                                                                            #   tcp_src=tcp_src,
+                                                                            #   tcp_dst=tcp_dst,
+                                                                            #   udp_dst=udp_dst,
+                                                                            #   udp_src=udp_src)
+
+                            actions = [self.datapaths[5].ofproto_parser.OFPActionOutput(1)]
+                            self.add_flow(self.datapaths[5], 2000, match, actions,idle_timeout=600)
+                            match = self.datapaths[2].ofproto_parser.OFPMatch(in_port=1,
+                                                                            eth_type=eth_type,
+                                                                            ipv4_src=ipv4_src,
+                                                                            ipv4_dst=ipv4_dst,
+                                                                            ip_proto=ip_proto)
+                                                                            #   tcp_src=tcp_src,
+                                                                            #   tcp_dst=tcp_dst,
+                                                                            #   udp_dst=udp_dst,
+                                                                            #   udp_src=udp_src)
+
+                            actions = [self.datapaths[2].ofproto_parser.OFPActionOutput(2)]
+                            self.add_flow(self.datapaths[2], 2000, match, actions,idle_timeout=600)
+                            match = self.datapaths[1].ofproto_parser.OFPMatch(in_port=1,
+                                                                            eth_type=eth_type,
+                                                                            ipv4_src=ipv4_src,
+                                                                            ipv4_dst=ipv4_dst,
+                                                                            ip_proto=ip_proto)
+                                                                            #   tcp_src=tcp_src,
+                                                                            #   tcp_dst=tcp_dst,
+                                                                            #   udp_dst=udp_dst,
+                                                                            #   udp_src=udp_src)
+                            actions = [self.datapaths[1].ofproto_parser.OFPActionOutput(2)]
+                            self.add_flow(self.datapaths[1], 2000, match, actions,idle_timeout=600)
+                            print("Flow added")
+                            self.flow_added = True
                     elif random_route == 2:
                         pass
                     elif random_route == 3:
                         pass
-                if ipv4_src == self.h2ip:
-                    if random_route == 1:
-                        match.set_in_port(2)
-                        actions = [self.datapaths[1].ofproto_parser.OFPActionOutput(1)]
-                        self.add_flow(self.datapaths[1], 20, match, actions)
-                        match = deepcopy(stat.match)
-                        match.set_in_port(2)
-                        actions = [self.datapaths[2].ofproto_parser.OFPActionOutput(1)]
-                        self.add_flow(self.datapaths[2], 20, match, actions)
-                        match = deepcopy(stat.match)
-                        match.set_in_port(1)
-                        actions = [self.datapaths[5].ofproto_parser.OFPActionOutput(2)]
-                        self.add_flow(self.datapaths[5], 20, match, actions)
-                        print("Flow added")
-                    elif random_route == 2:
-                        pass
-                    elif random_route == 3:
-                        pass
+                # if ipv4_src == self.h2ip:
+                #     if random_route == 1:
+                #         match.set_in_port(2)
+                #         actions = [self.datapaths[1].ofproto_parser.OFPActionOutput(1)]
+                #         self.add_flow(self.datapaths[1], 20, match, actions)
+                #         match = deepcopy(stat.match)
+                #         match.set_in_port(2)
+                #         actions = [self.datapaths[2].ofproto_parser.OFPActionOutput(1)]
+                #         self.add_flow(self.datapaths[2], 20, match, actions)
+                #         match = deepcopy(stat.match)
+                #         match.set_in_port(1)
+                #         actions = [self.datapaths[5].ofproto_parser.OFPActionOutput(2)]
+                #         self.add_flow(self.datapaths[5], 20, match, actions)
+                #         print("Flow added")
+                #     elif random_route == 2:
+                #         pass
+                #     elif random_route == 3:
+                #         pass
             # for i in stat.match.stringify_attrs():
             #     print(type(i))
             # self.logger.info("packet_count:  %d ", stat.packet_count)
@@ -222,10 +299,10 @@ class SimpleSwitch13(app_manager.RyuApp):
             #     mod = ofp_parser.OFPFlowMod(datapath=d,table_id=ofp.OFPTT_ALL, command=d.ofproto.OFPFC_DELETE,out_port=ofp.OFPP_ANY, out_group=ofp.OFPG_ANY)
             #     d.send_msg(mod)
             #     print("Flow id {} deleted".format(self.flow_id))
-            self.flow_ask = True
+            self.allow = False
             
 
-    def add_flow(self, datapath, priority, match, actions, buffer_id=None):
+    def add_flow(self, datapath, priority, match, actions,idle_timeout=0, buffer_id=None):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
 
@@ -234,10 +311,10 @@ class SimpleSwitch13(app_manager.RyuApp):
         if buffer_id:
             mod = parser.OFPFlowMod(datapath=datapath, buffer_id=buffer_id,
                                     priority=priority, match=match,
-                                    instructions=inst)
+                                    instructions=inst, idle_timeout=idle_timeout)
         else:
             mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
-                                    match=match, instructions=inst)
+                                    match=match, instructions=inst, idle_timeout=idle_timeout)
         datapath.send_msg(mod)
 
     # @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
@@ -283,7 +360,8 @@ class SimpleSwitch13(app_manager.RyuApp):
         try:
             layer4_header = layer4_header = pkt.protocols[2]
         except IndexError:
-            print("This is not layer 4 packet")
+            pass
+            #print("This is not layer 4 packet")
         #ipv4_d = ipv4.ipv4(msg.data)
         #print(ipv4_pkt)
         #print(dir(layer4_header))
@@ -350,8 +428,8 @@ class SimpleSwitch13(app_manager.RyuApp):
         except NameError:
             out_port = ofproto.OFPP_FLOOD 
         
-        print("IN PORT: {}".format(in_port))
-        print("OUT PORT: {}".format(out_port))
+        # print("IN PORT: {}".format(in_port))
+        # print("OUT PORT: {}".format(out_port))
 
         actions = [parser.OFPActionOutput(out_port)]
 
@@ -402,10 +480,10 @@ class SimpleSwitch13(app_manager.RyuApp):
             # verify if we have a valid buffer_id, if yes avoid to send both
             # flow_mod & packet_out
             if msg.buffer_id != ofproto.OFP_NO_BUFFER:
-                self.add_flow(datapath, 1000, match, actions, msg.buffer_id)
+                self.add_flow(datapath, 1000, match, actions, msg.buffer_id,idle_timeout=5)
                 #self.datapaths[datapath.id] = (datapath,match)
             else:
-                self.add_flow(datapath, 1000, match, actions)
+                self.add_flow(datapath, 1000, match, actions,idle_timeout=5)
                 #self.datapaths[datapath.id] = (datapath,match)
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
@@ -414,4 +492,4 @@ class SimpleSwitch13(app_manager.RyuApp):
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                 in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
-        self.allow = True
+        
