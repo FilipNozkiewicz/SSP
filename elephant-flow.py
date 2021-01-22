@@ -168,8 +168,7 @@ class SimpleSwitch13(app_manager.RyuApp):
 
             if stat.byte_count > self.elephant_treshold:
                 route_list = [ r for r in self.routes if r != self.current_route ]
-                self.current_route = random.choice(route_list)
-                random_route = self.current_route
+                random_route = random.choice(route_list)
                 self.current_priority = self.current_priority + 1
                 print("New Route {} !!!!!!!!!!!!! New Route {}".format(random_route,random_route))
                 #random_route = 3
